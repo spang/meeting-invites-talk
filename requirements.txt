@@ -1,0 +1,2 @@
+iCalendar==3.9.0
+flanker==0.4.32
