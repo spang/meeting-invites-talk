@@ -1,9 +1,9 @@
 from icalendar import (Calendar, Event,
                        Timezone, TimezoneDaylight, TimezoneStandard)
-from flanker.mime import create as create_mime
+from flanker import mime
 
 
-def create_ical_string():
+def create_ical_object():
     cal = Calendar()
     cal['prodid'] = '-//Mozilla.org/NONSGML Mozilla Calendar V1.1//EN'
     cal['version'] = '2.0'
@@ -53,12 +53,35 @@ def create_ical_string():
 
     cal.add_component(event)
 
-    return cal.to_ical()
+    return cal
 
 
-def send_calendar_invite(ical_string):
-    msg = create_mime.multipart('mixed')
-    # TODO: finish this
+def create_cal_mime_msg(to_addr, from_addr, ical_obj):
+    ical_string = ical_obj.to_string()
+
+    event = [sc for sc in ical_obj.subcomponents if sc.name == 'VEVENT']
+    assert len(event) == 1
+
+    msg = mime.create.multipart('mixed')
+    body = mime.create.multipart('alternative')
+    # TODO: fix body
+    body.append(
+        mime.create.text('html', '<p>A new event!</p>'),
+        mime.create.text('calendar;method=REPLY', ical_string))
+
+    attachment = mime.create.attachment(
+        'text/calendar',
+        ical_string,
+        'invite.ics',
+        disposition='attachment')
+
+    msg.append(body)
+    msg.append(attachment)
+
+    msg.headers['To'] = to_addr
+    msg.headers['Reply-To'] = to_addr
+    msg.headers['From'] = from_addr
+    msg.headers['Subject'] = 'RSVP to "{}"'.format(event[0].summary)
 
 if __name__ == '__main__':
-    print create_ical_string()
+    print create_ical_object().to_string()
