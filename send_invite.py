@@ -1,6 +1,11 @@
-from icalendar import (Calendar, Event,
-                       Timezone, TimezoneDaylight, TimezoneStandard)
+import requests
+
+from icalendar import (Calendar, Event, Timezone,
+                       TimezoneDaylight, TimezoneStandard)
 from flanker import mime
+
+NYLAS_TOKEN = 'your-access-token'
+API_URL = 'https://api.nylas.com/'
 
 
 def create_ical_object():
@@ -57,14 +62,13 @@ def create_ical_object():
 
 
 def create_cal_mime_msg(to_addr, from_addr, ical_obj):
-    ical_string = ical_obj.to_string()
+    ical_string = ical_obj.to_ical()
 
     event = [sc for sc in ical_obj.subcomponents if sc.name == 'VEVENT']
     assert len(event) == 1
 
     msg = mime.create.multipart('mixed')
     body = mime.create.multipart('alternative')
-    # TODO: fix body
     body.append(
         mime.create.text('html', '<p>A new event!</p>'),
         mime.create.text('calendar;method=REPLY', ical_string))
@@ -78,10 +82,29 @@ def create_cal_mime_msg(to_addr, from_addr, ical_obj):
     msg.append(body)
     msg.append(attachment)
 
-    msg.headers['To'] = to_addr
-    msg.headers['Reply-To'] = to_addr
     msg.headers['From'] = from_addr
-    msg.headers['Subject'] = 'RSVP to "{}"'.format(event[0].summary)
+    msg.headers['To'] = to_addr
+    msg.headers['Subject'] = 'RSVP to "{}"'.format(event[0]['summary'])
+
+    return msg
+
+
+def send_raw_message(msg):
+    response = requests.get(API_URL + '/n',
+                             auth=requests.auth.HTTPBasicAuth(NYLAS_TOKEN, ''))
+    if response.status_code != 200:
+        raise Exception('Failed to fetch namespace:\n{}'.format(response.text))
+
+    namespace_id = response.json()[0]['namespace_id']
+
+    response = requests.post('https://api-staging.nylas.com/n/{}/send'
+                             .format(namespace_id), msg.to_string(),
+                             auth=requests.auth.HTTPBasicAuth(NYLAS_TOKEN, ''),
+                             headers={'Content-Type': 'message/rfc822'})
+    if response.status_code != 200:
+        raise Exception('Failed to send message:\n{}'.format(response.text))
 
 if __name__ == '__main__':
-    print create_ical_object().to_string()
+    ical = create_ical_object()
+    msg = create_cal_mime_msg('christine@spang.cc', 'Christine Spang <spang@nilas.com>', ical)
+    send_raw_message(msg)
